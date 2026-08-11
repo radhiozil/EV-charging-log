@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EV Charging Log & Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Chart.js Library for Graphical Statistics -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --accent-green: #10b981;
+            --accent-blue: #3b82f6;
+            --accent-purple: #8b5cf6;
+            --accent-orange: #f59e0b;
+            --accent-pink: #ec4899;
+            --text-main: #f8fafc;
+            --text-sub: #94a3b8;
+            --border-color: #334155;
+            --danger-red: #ef4444;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Plus Jakarta Sans', sans-serif; }
+        body { background-color: var(--bg-color); color: var(--text-main); padding: 1.5rem; min-height: 100vh; display: flex; justify-content: center; }
+        .container { width: 100%; max-width: 900px; }
+
+        header { text-align: center; margin-bottom: 1.5rem; }
+        header h1 { font-size: 1.8rem; font-weight: 800; background: linear-gradient(135deg, #38bdf8, #818cf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        header p { color: var(--text-sub); font-size: 0.9rem; margin-top: 0.3rem; }
+
+        /* Navigation Tabs */
+        .tabs-nav { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; border-bottom: 2px solid var(--border-color); }
+        .tab-btn { background: transparent; border: none; color: var(--text-sub); padding: 0.75rem 1.25rem; font-weight: 700; font-size: 0.9rem; cursor: pointer; border-bottom: 3px solid transparent; transition: all 0.2s ease; }
+        .tab-btn.active { color: var(--accent-blue); border-bottom-color: var(--accent-blue); }
+
+        /* Tab Content Display Logic */
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* General Card & Forms */
+        .card { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 12px; padding: 1.25rem; margin-bottom: 1.5rem; }
+        .card-title { font-size: 1.1rem; font-weight: 700; color: var(--text-main); }
+        
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem; }
+        .form-group { display: flex; flex-direction: column; gap: 0.4rem; }
+        .form-group label { font-size: 0.8rem; color: var(--text-sub); font-weight: 600; }
+        .form-group input, .form-group select { background: #0f172a; border: 1px solid var(--border-color); border-radius: 8px; padding: 0.6rem 0.8rem; color: #fff; font-size: 0.95rem; font-weight: 600; outline: none; }
+        .form-group input:focus, .form-group select:focus { border-color: var(--accent-blue); }
+        
+        .btn { background: var(--accent-blue); color: #fff; border: none; border-radius: 8px; padding: 0.75rem 1rem; font-weight: 700; font-size: 0.95rem; cursor: pointer; width: 100%; margin-top: 1rem; }
+        .btn:hover { opacity: 0.9; }
+        .btn-danger { background: var(--danger-red); font-size: 0.75rem; color: #fff; border: none; padding: 0.3rem 0.6rem; border-radius: 4px; cursor: pointer; }
+
+        /* Dynamic Fields Toggle Container */
+        .outside-fields { display: none; grid-column: span 2; grid-template-columns: 1fr 1fr; gap: 1rem; background: #0f172a; padding: 1rem; border-radius: 8px; border: 1px dashed var(--border-color); margin-top: 0.25rem; }
+
+        /* Tab 2 Controls */
+        .summary-header { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+        .controls-group { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+        .toggle-group { display: flex; background: #0f172a; padding: 0.25rem; border-radius: 8px; border: 1px solid var(--border-color); }
+        .toggle-btn { background: transparent; border: none; color: var(--text-sub); padding: 0.4rem 0.8rem; font-size: 0.8rem; font-weight: 700; border-radius: 6px; cursor: pointer; }
+        .toggle-btn.active { background: var(--accent-blue); color: #fff; }
+
+        /* Chart Wrapper */
+        .chart-container { position: relative; height: 340px; width: 100%; margin-bottom: 1rem; }
+
+        /* Tables (Tab 2 & 3) */
+        .table-wrap { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem; }
+        th { background: #0f172a; color: var(--text-sub); padding: 0.75rem 0.5rem; font-weight: 700; text-transform: uppercase; border-bottom: 1px solid var(--border-color); }
+        td { padding: 0.75rem 0.5rem; border-bottom: 1px solid var(--border-color); }
+        tr:hover { background: rgba(255,255,255,0.02); }
+
+        @media (max-width: 600px) { 
+            .form-grid { grid-template-columns: 1fr; } 
+            .outside-fields { grid-template-columns: 1fr; grid-column: span 1; }
+            .summary-header { flex-direction: column; align-items: flex-start; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>EV Charging Log</h1>
+        <p>Track, store, and analyze your monthly charging entries</p>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <div class="tabs-nav">
+        <button type="button" class="tab-btn active" data-tab="tab1">1. Log Session</button>
+        <button type="button" class="tab-btn" data-tab="tab2">2. Monthly Summary</button>
+        <button type="button" class="tab-btn" data-tab="tab3">3. Raw Data</button>
+    </div>
+
+    <!-- TAB 1: ENTRY FORM -->
+    <div id="tab1" class="tab-content active" style="display: block;">
+        <div class="card">
+            <div class="card-title">Add New Charging Record</div>
+            <form id="logForm">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Date</label>
+                        <input type="date" id="entryDate" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Time</label>
+                        <input type="time" id="entryTime" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Charger Type</label>
+                        <select id="chargerType">
+                            <option value="Home Portable (3.7kW)">Home Portable (3.7kW)</option>
+                            <option value="Home Wallbox (7.0kW)">Home Wallbox (7.0kW)</option>
+                            <option value="Office AC (11kW)">Office AC (11kW)</option>
+                            <option value="Public AC Charger">Public AC Charger (Outside)</option>
+                            <option value="DC Fast Charger">DC Fast Charger (Outside)</option>
+                        </select>
+                    </div>
+
+                    <!-- Dynamic Outside Charging Details -->
+                    <div id="outsideFields" class="outside-fields">
+                        <div class="form-group">
+                            <label>CPO Provider Name</label>
+                            <input type="text" id="cpoName" placeholder="e.g. Gentari, ChargEV, Shell Recharge">
+                        </div>
+                        <div class="form-group">
+                            <label>Charger Rating (kW)</label>
+                            <input type="number" id="chargerPower" step="1" placeholder="e.g. 11, 22, 100, 180">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Energy Charged (kWh)</label>
+                        <input type="number" id="entryKwh" step="0.01" min="0.1" placeholder="e.g. 25.5" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Rate (RM / kWh)</label>
+                        <input type="number" id="entryRate" step="0.01" value="0.30" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Calculated Total Cost (RM)</label>
+                        <input type="text" id="entryTotal" value="RM 0.00" readonly style="color: var(--accent-green);">
+                    </div>
+                </div>
+                <button type="submit" class="btn">Save Entry</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- TAB 2: MONTHLY SUMMARY & CHART -->
+    <div id="tab2" class="tab-content" style="display: none;">
+        <!-- Graphical Statistics Card -->
+        <div class="card">
+            <div class="summary-header">
+                <div class="card-title">Monthly Statistics</div>
+                <div class="controls-group">
+                    <!-- Metric Switcher -->
+                    <div class="toggle-group">
+                        <button type="button" id="viewCostBtn" class="toggle-btn active">Cost (RM)</button>
+                        <button type="button" id="viewKwhBtn" class="toggle-btn">Energy (kWh)</button>
+                    </div>
+                    <!-- Mode Switcher (Value vs Percentage) -->
+                    <div class="toggle-group">
+                        <button type="button" id="modeValueBtn" class="toggle-btn active">Value</button>
+                        <button type="button" id="modePercentBtn" class="toggle-btn">% Split</button>
+                    </div>
+                </div>
+            </div>
+            <div class="chart-container">
+                <canvas id="monthlyChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Monthly Summary Table Card -->
+        <div class="card">
+            <div class="card-title" style="margin-bottom: 1rem;">Monthly Breakdown</div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Month</th>
+                            <th id="metricHeader">Total Cost (RM)</th>
+                            <th>Sessions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="summaryTableBody">
+                        <!-- Populated by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB 3: RAW DATA TABLE -->
+    <div id="tab3" class="tab-content" style="display: none;">
+        <div class="card">
+            <div class="summary-header">
+                <div class="card-title">All Records</div>
+                <button type="button" id="exportBtn" style="background: var(--border-color); color: #fff; border: none; padding: 0.3rem 0.6rem; border-radius: 6px; cursor: pointer; font-size: 0.75rem; font-weight: 700;">Export CSV</button>
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date & Time</th>
+                            <th>Charger / CPO</th>
+                            <th>Power (kW)</th>
+                            <th>kWh</th>
+                            <th>Rate</th>
+                            <th>Total</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="rawTableBody">
+                        <!-- Populated by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const STORAGE_KEY = 'ev_charging_logs';
+    let records = [];
+    let currentSummaryView = 'cost'; // 'cost' or 'kwh'
+    let currentDisplayMode = 'value'; // 'value' or 'percent'
+    let monthlyChartInstance = null;
+
+    function loadRecords() {
+        try {
+            const data = localStorage.getItem(STORAGE_KEY);
+            return data ? JSON.parse(data) : [];
+        } catch (e) {
+            console.warn('LocalStorage unavailable, running in-memory.', e);
+            return [];
+        }
+    }
+
+    function saveRecords() {
+        try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+        } catch (e) {
+            console.warn('LocalStorage save failed.', e);
+        }
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+        records = loadRecords();
+
+        const now = new Date();
+        document.getElementById('entryDate').value = now.toISOString().split('T')[0];
+        document.getElementById('entryTime').value = now.toTimeString().slice(0, 5);
+
+        // Tab Switching Logic
+        const tabButtons = document.querySelectorAll('.tab-btn');
+        const tabContents = document.querySelectorAll('.tab-content');
+
+        tabButtons.forEach(button => {
+            button.addEventListener('click', (e) => {
+                e.preventDefault();
+                const targetId = button.getAttribute('data-tab');
+
+                tabButtons.forEach(btn => btn.classList.remove('active'));
+                button.classList.add('active');
+
+                tabContents.forEach(content => {
+                    if (content.id === targetId) {
+                        content.style.display = 'block';
+                        content.classList.add('active');
+                    } else {
+                        content.style.display = 'none';
+                        content.classList.remove('active');
+                    }
+                });
+
+                if (targetId === 'tab2' || targetId === 'tab3') {
+                    renderAllViews();
+                }
+            });
+        });
+
+        // Form Event Listeners
+        document.getElementById('chargerType').addEventListener('change', handleChargerTypeChange);
+        document.getElementById('entryKwh').addEventListener('input', updateTotal);
+        document.getElementById('entryRate').addEventListener('input', updateTotal);
+        document.getElementById('logForm').addEventListener('submit', saveEntry);
+
+        // View Toggle Listeners
+        document.getElementById('viewCostBtn').addEventListener('click', () => setMetricView('cost'));
+        document.getElementById('viewKwhBtn').addEventListener('click', () => setMetricView('kwh'));
+        
+        // Mode Toggle Listeners (% vs Value)
+        document.getElementById('modeValueBtn').addEventListener('click', () => setDisplayMode('value'));
+        document.getElementById('modePercentBtn').addEventListener('click', () => setDisplayMode('percent'));
+
+        // Export Listener
+        document.getElementById('exportBtn').addEventListener('click', exportCSV);
+
+        handleChargerTypeChange();
+        renderAllViews();
+    });
+
+    function handleChargerTypeChange() {
+        const type = document.getElementById('chargerType').value;
+        const rateInput = document.getElementById('entryRate');
+        const outsideFields = document.getElementById('outsideFields');
+        const chargerPowerInput = document.getElementById('chargerPower');
+
+        if (type === 'Public AC Charger' || type === 'DC Fast Charger') {
+            outsideFields.style.display = 'grid';
+            if (type === 'Public AC Charger') {
+                rateInput.value = '1.00';
+                chargerPowerInput.value = '22';
+            } else {
+                rateInput.value = '1.40';
+                chargerPowerInput.value = '120';
+            }
+        } else {
+            outsideFields.style.display = 'none';
+            if (type.includes('Home')) rateInput.value = '0.30';
+            else if (type.includes('Office')) rateInput.value = '0.28';
+        }
+        updateTotal();
+    }
+
+    function updateTotal() {
+        const kwh = parseFloat(document.getElementById('entryKwh').value) || 0;
+        const rate = parseFloat(document.getElementById('entryRate').value) || 0;
+        document.getElementById('entryTotal').value = `RM ${(kwh * rate).toFixed(2)}`;
+    }
+
+    function saveEntry(e) {
+        e.preventDefault();
+        const type = document.getElementById('chargerType').value;
+        const kwh = parseFloat(document.getElementById('entryKwh').value) || 0;
+        const rate = parseFloat(document.getElementById('entryRate').value) || 0;
+        const cpo = document.getElementById('cpoName').value.trim();
+        const power = document.getElementById('chargerPower').value;
+
+        const newEntry = {
+            id: Date.now(),
+            date: document.getElementById('entryDate').value,
+            time: document.getElementById('entryTime').value,
+            type: type,
+            cpo: (type.includes('Public') || type.includes('DC')) ? (cpo || 'Outside') : '-',
+            power: (type.includes('Public') || type.includes('DC')) ? (power ? `${power} kW` : '-') : '-',
+            kwh: kwh,
+            rate: rate,
+            total: kwh * rate
+        };
+
+        records.push(newEntry);
+        saveRecords();
+        alert('Charging record saved successfully!');
+
+        document.getElementById('entryKwh').value = '';
+        document.getElementById('cpoName').value = '';
+        updateTotal();
+        renderAllViews();
+    }
+
+    function deleteRecord(id) {
+        if (confirm("Delete this record?")) {
+            records = records.filter(r => r.id !== id);
+            saveRecords();
+            renderAllViews();
+        }
+    }
+
+    function setMetricView(metric) {
+        currentSummaryView = metric;
+        document.getElementById('viewCostBtn').classList.toggle('active', metric === 'cost');
+        document.getElementById('viewKwhBtn').classList.toggle('active', metric === 'kwh');
+        document.getElementById('metricHeader').innerText = metric === 'cost' ? 'Total Cost (RM)' : 'Total Energy (kWh)';
+        renderAllViews();
+    }
+
+    function setDisplayMode(mode) {
+        currentDisplayMode = mode;
+        document.getElementById('modeValueBtn').classList.toggle('active', mode === 'value');
+        document.getElementById('modePercentBtn').classList.toggle('active', mode === 'percent');
+        renderChart();
+    }
+
+    function renderAllViews() {
+        renderRawTable();
+        renderSummaryTable();
+        renderChart();
+    }
+
+    function renderChart() {
+        const ctx = document.getElementById('monthlyChart').getContext('2d');
+
+        if (!records || records.length === 0) {
+            if (monthlyChartInstance) monthlyChartInstance.destroy();
+            return;
+        }
+
+        const months = [...new Set(records.map(r => r.date ? r.date.substring(0, 7) : ''))].filter(Boolean).sort();
+
+        const chargerTypes = [
+            'Home Portable (3.7kW)',
+            'Home Wallbox (7.0kW)',
+            'Office AC (11kW)',
+            'Public AC Charger',
+            'DC Fast Charger'
+        ];
+
+        const colorMap = {
+            'Home Portable (3.7kW)': '#f59e0b',
+            'Home Wallbox (7.0kW)': '#8b5cf6',
+            'Office AC (11kW)': '#3b82f6',
+            'Public AC Charger': '#ec4899',
+            'DC Fast Charger': '#10b981'
+        };
+
+        const monthlyTotals = {};
+        months.forEach(month => {
+            monthlyTotals[month] = records
+                .filter(r => r.date && r.date.substring(0, 7) === month)
+                .reduce((sum, r) => sum + (currentSummaryView === 'cost' ? (r.total || 0) : (r.kwh || 0)), 0);
+        });
+
+        const datasets = chargerTypes.map(type => {
+            const rawValues = [];
+            const chartData = months.map(month => {
+                const val = records
+                    .filter(r => r.date && r.date.substring(0, 7) === month && r.type === type)
+                    .reduce((sum, r) => sum + (currentSummaryView === 'cost' ? (r.total || 0) : (r.kwh || 0)), 0);
+                
+                rawValues.push(val);
+
+                if (currentDisplayMode === 'percent') {
+                    const total = monthlyTotals[month] || 0;
+                    return total > 0 ? parseFloat(((val / total) * 100).toFixed(1)) : 0;
+                } else {
+                    return val;
+                }
+            });
+
+            return {
+                label: type,
+                data: chartData,
+                rawValues: rawValues,
+                backgroundColor: colorMap[type],
+                borderRadius: 4
+            };
+        });
+
+        if (monthlyChartInstance) {
+            monthlyChartInstance.destroy();
+        }
+
+        monthlyChartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: months,
+                datasets: datasets
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        labels: { color: '#94a3b8', font: { family: 'Plus Jakarta Sans', size: 11 } }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) label += ': ';
+                                const datasetIndex = context.datasetIndex;
+                                const dataIndex = context.dataIndex;
+                                const rawVal = context.dataset.rawValues[dataIndex];
+
+                                if (currentDisplayMode === 'percent') {
+                                    const pct = context.parsed.y !== null ? context.parsed.y : 0;
+                                    const valStr = currentSummaryView === 'cost' ? `RM ${rawVal.toFixed(2)}` : `${rawVal.toFixed(2)} kWh`;
+                                    label += `${pct.toFixed(1)}% (${valStr})`;
+                                } else {
+                                    if (context.parsed.y !== null) {
+                                        label += currentSummaryView === 'cost' 
+                                            ? 'RM ' + context.parsed.y.toFixed(2) 
+                                            : context.parsed.y.toFixed(2) + ' kWh';
+                                    }
+                                }
+                                return label;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        stacked: true,
+                        ticks: { color: '#94a3b8' },
+                        grid: { color: '#334155' }
+                    },
+                    y: {
+                        stacked: true,
+                        max: currentDisplayMode === 'percent' ? 100 : undefined,
+                        ticks: { 
+                            color: '#94a3b8',
+                            callback: function(value) {
+                                return currentDisplayMode === 'percent' ? value + '%' : value;
+                            }
+                        },
+                        grid: { color: '#334155' }
+                    }
+                }
+            }
+        });
+    }
+
+    function renderRawTable() {
+        const tbody = document.getElementById('rawTableBody');
+        tbody.innerHTML = '';
+
+        if (!records || records.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color: var(--text-sub);">No records found.</td></tr>`;
+            return;
+        }
+
+        const sorted = [...records].sort((a, b) => new Date(`${b.date}T${b.time}`) - new Date(`${a.date}T${a.time}`));
+
+        sorted.forEach(r => {
+            const chargerLabel = (r.cpo && r.cpo !== '-') ? `${r.type} (${r.cpo})` : (r.type || '-');
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${r.date || ''} ${r.time || ''}</td>
+                <td>${chargerLabel}</td>
+                <td>${r.power || '-'}</td>
+                <td>${(r.kwh || 0).toFixed(2)} kWh</td>
+                <td>RM ${(r.rate || 0).toFixed(2)}</td>
+                <td style="color: var(--accent-green); font-weight: 700;">RM ${(r.total || 0).toFixed(2)}</td>
+                <td><button type="button" class="btn-danger">Delete</button></td>
+            `;
+            tr.querySelector('.btn-danger').addEventListener('click', () => deleteRecord(r.id));
+            tbody.appendChild(tr);
+        });
+    }
+
+    function renderSummaryTable() {
+        const tbody = document.getElementById('summaryTableBody');
+        tbody.innerHTML = '';
+
+        if (!records || records.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="3" style="text-align:center; color: var(--text-sub);">No records found.</td></tr>`;
+            return;
+        }
+
+        const summary = {};
+        records.forEach(r => {
+            if (!r.date) return;
+            const monthKey = r.date.substring(0, 7);
+            if (!summary[monthKey]) {
+                summary[monthKey] = { cost: 0, kwh: 0, sessions: 0 };
+            }
+            summary[monthKey].cost += (r.total || 0);
+            summary[monthKey].kwh += (r.kwh || 0);
+            summary[monthKey].sessions += 1;
+        });
+
+        const months = Object.keys(summary).sort().reverse();
+        months.forEach(month => {
+            const val = currentSummaryView === 'cost' 
+                ? `RM ${summary[month].cost.toFixed(2)}` 
+                : `${summary[month].kwh.toFixed(2)} kWh`;
+
+            tbody.innerHTML += `
+                <tr>
+                    <td style="font-weight: 700;">${month}</td>
+                    <td style="color: var(--accent-green); font-weight: 700;">${val}</td>
+                    <td>${summary[month].sessions} sessions</td>
+                </tr>
+            `;
+        });
+    }
+
+    function exportCSV() {
+        if (!records || records.length === 0) { alert('No data to export.'); return; }
+        let csvContent = "data:text/csv;charset=utf-8,Date,Time,Charger Type,CPO,Power (kW),kWh,Rate (RM/kWh),Total Cost (RM)\n";
+        records.forEach(r => {
+            csvContent += `${r.date},${r.time},"${r.type}","${r.cpo || '-'}","${r.power || '-'}">${r.kwh},${r.rate},${(r.total || 0).toFixed(2)}\n`;
+        });
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `EV_Charging_Log_${new Date().toISOString().split('T')[0]}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+</script>
+
+</body>
+</html>
